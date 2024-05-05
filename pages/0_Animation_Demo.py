@@ -13,72 +13,76 @@
 # limitations under the License.
 
 from typing import Any
-
 import numpy as np
-
+import pandas as pd
 import streamlit as st
-from streamlit.hello.utils import show_code
+import requests
+from io import BytesIO
+import plotly.express as px
+
+st.set_page_config(page_title="MBTI 통계", page_icon="📹")
+st.markdown("# MBTI 통계")
+st.sidebar.header("MBTI 통계")
 
 
-def animation_demo() -> None:
+url = "https://github.com/Soyoung9075/mbti--streamlit/raw/main/MBTI_MATCHING.xlsx"
+response = requests.get(url)
+response.raise_for_status()
 
-    # Interactive Streamlit elements, like these sliders, return their value.
-    # This gives you an extremely simple interaction model.
-    iterations = st.sidebar.slider("Level of detail", 2, 20, 10, 1)
-    separation = st.sidebar.slider("Separation", 0.7, 2.0, 0.7885)
-
-    # Non-interactive elements return a placeholder to their location
-    # in the app. Here we're storing progress_bar to update it later.
-    progress_bar = st.sidebar.progress(0)
-
-    # These two elements will be filled in later, so we create a placeholder
-    # for them using st.empty()
-    frame_text = st.sidebar.empty()
-    image = st.empty()
-
-    m, n, s = 960, 640, 400
-    x = np.linspace(-m / s, m / s, num=m).reshape((1, m))
-    y = np.linspace(-n / s, n / s, num=n).reshape((n, 1))
-
-    for frame_num, a in enumerate(np.linspace(0.0, 4 * np.pi, 100)):
-        # Here were setting value for these two elements.
-        progress_bar.progress(frame_num)
-        frame_text.text("Frame %i/100" % (frame_num + 1))
-
-        # Performing some fractal wizardry.
-        c = separation * np.exp(1j * a)
-        Z = np.tile(x, (n, 1)) + 1j * np.tile(y, (1, m))
-        C = np.full((n, m), c)
-        M: Any = np.full((n, m), True, dtype=bool)
-        N = np.zeros((n, m))
-
-        for i in range(iterations):
-            Z[M] = Z[M] * Z[M] + C[M]
-            M[np.abs(Z) > 2] = False
-            N[M] = i
-
-        # Update the image placeholder by calling the image() function on it.
-        image.image(1.0 - (N / N.max()), use_column_width=True)
-
-    # We clear elements by calling empty on them.
-    progress_bar.empty()
-    frame_text.empty()
-
-    # Streamlit widgets automatically run the script from top to bottom. Since
-    # this button is not connected to any other logic, it just causes a plain
-    # rerun.
-    st.button("Re-run")
+data = pd.read_excel(BytesIO(response.content), sheet_name= "Sheet2")
 
 
-st.set_page_config(page_title="Animation Demo", page_icon="📹")
-st.markdown("# Animation Demo")
-st.sidebar.header("Animation Demo")
-st.write(
-    """This app shows how you can use Streamlit to build cool animations.
-It displays an animated fractal based on the the Julia Set. Use the slider
-to tune different parameters."""
-)
+# 가장 많은 MBTI
+df_grouped = data.groupby('mbti')['Name'].count().reset_index()
+max_number = df_grouped['Name'].max()
+most_freq_mbti = df_grouped.loc[df_grouped['Name'] == max_number]['mbti'].tolist()
+def list_to_str(mbti_list):
+    # Join the elements of the list into a single string separated by commas
+    return ', '.join(mbti_list)
 
-animation_demo()
+# 가장 적은 MBTI
+min_number = df_grouped['Name'].min()
+least_freq_mbti = df_grouped.loc[df_grouped['Name'] == min_number]['mbti'].tolist()
 
-show_code(animation_demo)
+
+with st.container(border = True):
+
+    st.metric(label = "가장 많은 MBTI", value = list_to_str(most_freq_mbti)) 
+    st.metric(label = "가장 적은 MBTI", value = list_to_str(least_freq_mbti))
+
+data['Type_1']=data['mbti'].str[0]
+data['Type_2']=data['mbti'].str[1]
+data['Type_3']=data['mbti'].str[2]
+data['Type_4']=data['mbti'].str[3]
+data['Type_5'] = data['Type_2'] + data['Type_3']
+
+def mbti_type_plot(data, Type, y_label):
+    
+    df_type = data.groupby(Type)['mbti'].count().reset_index()
+    df_type.columns = ['Type', 'Count']
+
+    fig = px.bar(df_type, x = "Type", y = "Count",
+          labels={"Count": "Count","Type": y_label},
+          template="simple_white")
+    fig.update_layout(width=500, height= 300)
+    colors = ['red' if val > 16 else 'green' for val in df_type['Count']] 
+    fig.update_traces(marker_color=colors)
+    return fig
+
+col1, col2 = st.columns(2)
+
+with col1 : 
+    col1.plotly_chart(mbti_type_plot(data, 'Type_1', 'E vs I'), use_container_width=True, height = 5)
+
+with col2 :
+    col2.plotly_chart(mbti_type_plot(data, 'Type_2', 'N vs S'), use_container_width=True)
+
+col3, col4 = st.columns(2)
+
+with col3 :
+    col3.plotly_chart(mbti_type_plot(data, 'Type_3', 'F vs T'),use_container_width=True)
+
+with col4 :
+    col4.plotly_chart(mbti_type_plot(data, 'Type_4', 'P vs J'),use_container_width=True)
+    
+        
